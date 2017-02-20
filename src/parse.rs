@@ -26,6 +26,23 @@ pub fn try<F, T>(buf: &mut EasyBuf, op: F) -> Poll<T>
     res
 }
 
+pub fn repeat<F>(buf: &mut EasyBuf, op: F) -> Poll<EasyBuf>
+              where F: Fn(&[u8]) -> Poll<Option<usize>> {
+    let len = try_ready!(repeat_len(buf.as_slice(), op));
+    Ok(Async::Ready(buf.drain_to(len)))
+}
+
+pub fn repeat_len<F>(slice: &[u8], op: F) -> Poll<usize>
+                  where F: Fn(&[u8]) -> Poll<Option<usize>> {
+    let mut len = 0;
+    loop {
+        match try_ready!(op(&slice[len..])) {
+            Some(add) => len += add,
+            None => return Ok(Async::Ready(len))
+        }
+    }
+}
+
 
 //------------ Various Parsing -----------------------------------------------
 
@@ -71,6 +88,36 @@ pub fn literal(buf: &mut EasyBuf, literal: &[u8]) -> Poll<()> {
     Ok(Async::Ready(()))
 }
 
+
+/// Parses an escaped sequence of octets.
+///
+/// The closure `test` is given a bytes slice and is supposed to return the
+/// number of octets at the beginnung of the slice form a single escaped
+/// character.
+///
+/// Upon success, the function returns a buffer of the un-escaped characters.
+pub fn escaped<F>(buf: &mut EasyBuf, test: F) -> Poll<EasyBuf>
+               where F: Fn(&[u8]) -> Poll<usize> {
+    let mut i = 0;
+    while i < buf.len() {
+        match test(&buf.as_slice()[i..]) {
+            Ok(Async::NotReady) => return Ok(Async::NotReady),
+            Ok(Async::Ready(count)) => {
+                assert!(count > 0);
+                i += count;
+            }
+            Err(err) => {
+                if i > 0 {
+                    return Ok(Async::Ready(buf.drain_to(i)));
+                }
+                else {
+                    return Err(err)
+                }
+            }
+        }
+    }
+    Ok(Async::NotReady)
+}
 
 //------------ Category Octet Parsing ----------------------------------------
 
@@ -124,6 +171,24 @@ pub fn cats<F>(buf: &mut EasyBuf, test: F) -> Poll<EasyBuf>
         Some(0) => Err(Error),
         Some(end) => Ok(Async::Ready(buf.drain_to(end)))
     }
+}
+
+
+pub fn cats_len<F>(slice: &[u8], test: F) -> Poll<usize>
+                where F: Fn(u8) -> bool {
+    let mut i = 0;
+    while i < slice.len() {
+        if !test(slice[i]) {
+            if i == 0 {
+                return Err(Error)
+            }
+            else {
+                return Ok(Async::Ready(i))
+            }
+        }
+        i += 1;
+    }
+    Ok(Async::NotReady)
 }
 
 
@@ -213,3 +278,40 @@ pub fn cats_cat<F>(buf: &mut EasyBuf, word: F, delim: F) -> Poll<EasyBuf>
     }
 }
 
+
+//============ Test =========================================================
+
+#[cfg(test)]
+mod test {
+    use futures::Async;
+    use tokio_core::io::EasyBuf;
+    use super::*;
+
+
+    fn buf(slice: &[u8]) -> EasyBuf { Vec::from(slice).into() }
+
+    fn escape_seq(slice: &[u8]) -> Poll<usize> {
+        assert!(!slice.is_empty());
+        if slice[0] == 33 || (slice[0] >= 35 && slice[0] <= 91)
+                          || (slice[0] >= 93 && slice[0] <= 126) {
+            return Ok(Async::Ready(1))
+        }
+        if slice[0] == 92 {
+            if slice.len() < 2 {
+                return Ok(Async::NotReady)
+            }
+            if slice[0] >= 32 && slice[0] <= 126 {
+                return Ok(Async::Ready(2))
+            }
+        }
+        Err(Error)
+    }
+
+    #[test]
+    fn test_escape() {
+        assert_eq!(escaped(&mut buf(b"foo "), escape_seq),
+                   Ok(Async::Ready(buf(b"foo"))));
+        assert_eq!(escaped(&mut buf(b"f\\oo\\  "), escape_seq),
+                   Ok(Async::Ready(buf(b"f\\oo\\ "))));
+    }
+}
