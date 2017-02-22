@@ -2,13 +2,14 @@
 use std::net::{Ipv4Addr, Ipv6Addr};
 use ::{Async, EasyBuf, Poll};
 use ::parse::{rule, token};
+use ::parse::token::TokenError;
 use ::core::{u16_hexdigs, u8_digits};
  
 
 //------------ parse_ipv4addr ------------------------------------------------
 
 /// Parses an IPv4 address
-pub fn parse_ipv4_addr(buf: &mut EasyBuf) -> Poll<Ipv4Addr, IpaddrError> {
+pub fn parse_ipv4_addr(buf: &mut EasyBuf) -> Poll<Ipv4Addr, TokenError> {
     rule::group(buf, |buf| {
         let a = try_ready!(u8_digits(buf));
         try_ready!(token::skip_octet(buf, b'.'));
@@ -28,16 +29,16 @@ pub fn parse_ipv4_addr(buf: &mut EasyBuf) -> Poll<Ipv4Addr, IpaddrError> {
 ///
 //  IPv6-addr      = IPv6-full / IPv6-comp / IPv6v4-full / IPv6v4-comp
 //
-pub fn parse_ipv6_addr(buf: &mut EasyBuf) -> Poll<Ipv6Addr, IpaddrError> {
+pub fn parse_ipv6_addr(buf: &mut EasyBuf) -> Poll<Ipv6Addr, TokenError> {
     try_fail!(ipv6_full(buf));
     try_fail!(ipv6_comp(buf));
     try_fail!(ipv6v4_full(buf));
     try_fail!(ipv6v4_comp(buf));
-    Err(IpaddrError)
+    Err(TokenError)
 }
 
 //  IPv6-full      = IPv6-hex 7(":" IPv6-hex)
-fn ipv6_full(buf: &mut EasyBuf) -> Poll<Ipv6Addr, IpaddrError> {
+fn ipv6_full(buf: &mut EasyBuf) -> Poll<Ipv6Addr, TokenError> {
     rule::group(buf, |buf| {
         let a = try_ready!(u16_hexdigs(buf));
         try_ready!(token::skip_octet(buf, b':'));
@@ -60,7 +61,7 @@ fn ipv6_full(buf: &mut EasyBuf) -> Poll<Ipv6Addr, IpaddrError> {
 
 // IPv6-comp      = [IPv6-hex *5(":" IPv6-hex)] "::"
 //                  [IPv6-hex *5(":" IPv6-hex)]
-fn ipv6_comp(buf: &mut EasyBuf) -> Poll<Ipv6Addr, IpaddrError> {
+fn ipv6_comp(buf: &mut EasyBuf) -> Poll<Ipv6Addr, TokenError> {
     rule::group(buf, |buf| {
         let (mut left, left_count) = try_ready!(ipv6_comp_left(buf, 6));
         let (right, right_count) = try_ready!(ipv6_comp_right(buf,
@@ -74,7 +75,7 @@ fn ipv6_comp(buf: &mut EasyBuf) -> Poll<Ipv6Addr, IpaddrError> {
 }
 
 // IPv6v4-full    = IPv6-hex 5(":" IPv6-hex) ":" IPv4-address-literal
-fn ipv6v4_full(buf: &mut EasyBuf) -> Poll<Ipv6Addr, IpaddrError> {
+fn ipv6v4_full(buf: &mut EasyBuf) -> Poll<Ipv6Addr, TokenError> {
     rule::group(buf, |buf| {
         let a = try_ready!(u16_hexdigs(buf));
         try_ready!(token::skip_octet(buf, b':'));
@@ -104,7 +105,7 @@ fn ipv6v4_full(buf: &mut EasyBuf) -> Poll<Ipv6Addr, IpaddrError> {
 // IPv6v4-comp    = [IPv6-hex *3(":" IPv6-hex)] "::"
 //                  [IPv6-hex *3(":" IPv6-hex) ":"]
 //                  IPv4-address-literal
-fn ipv6v4_comp(buf: &mut EasyBuf) -> Poll<Ipv6Addr, IpaddrError> {
+fn ipv6v4_comp(buf: &mut EasyBuf) -> Poll<Ipv6Addr, TokenError> {
     rule::group(buf, |buf| {
         let (mut left, left_count) = try_ready!(ipv6_comp_left(buf, 4));
         let (right, right_count) = try_ready!(ipv6_comp_right(buf,
@@ -125,7 +126,7 @@ fn ipv6v4_comp(buf: &mut EasyBuf) -> Poll<Ipv6Addr, IpaddrError> {
 ///
 /// Returns the parsed components and the number of them.
 fn ipv6_comp_left(buf: &mut EasyBuf, max: usize)
-                  -> Poll<([u16; 8], usize), IpaddrError> {
+                  -> Poll<([u16; 8], usize), TokenError> {
     let mut res = [0u16, 0, 0, 0, 0, 0, 0, 0];
 
     // Minimum size is two: b"::" or b"0:"
@@ -157,7 +158,7 @@ fn ipv6_comp_left(buf: &mut EasyBuf, max: usize)
 ///
 /// Returns the parsed components and the number of them.
 fn ipv6_comp_right(buf: &mut EasyBuf, max: usize)
-                   -> Poll<([u16; 8], usize), IpaddrError> {
+                   -> Poll<([u16; 8], usize), TokenError> {
     let mut res = [0u16, 0, 0, 0, 0, 0, 0, 0];
 
     for i in 0..max {
@@ -168,7 +169,7 @@ fn ipv6_comp_right(buf: &mut EasyBuf, max: usize)
                     return Ok(Async::Ready((res, 0)))
                 }
                 else {
-                    return Err(IpaddrError)
+                    return Err(TokenError)
                 }
             }
             Ok(Async::Ready(v)) => {
@@ -187,24 +188,6 @@ fn ipv6_comp_right(buf: &mut EasyBuf, max: usize)
     Ok(Async::Ready((res, max)))
 }
 
-
-//------------ IpaddrError ---------------------------------------------------
-
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct IpaddrError;
-
-impl From<token::OctetError> for IpaddrError {
-    fn from(_: token::OctetError) -> IpaddrError {
-        IpaddrError
-    }
-}
-
-impl From<token::CatError> for IpaddrError {
-    fn from(_: token::CatError) -> IpaddrError {
-        IpaddrError
-    }
-}
 
 //============ Test =========================================================
 

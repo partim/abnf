@@ -115,49 +115,69 @@ pub fn skip<P, E>(buf: &mut EasyBuf, parsef: P) -> Poll<(), E>
     try_ready!(parse(buf, parsef));
     Ok(Async::Ready(()))
 }
-    
+
+/// Skips over an optional token.
+pub fn skip_opt<P, E>(buf: &mut EasyBuf, parsef: P) -> Poll<bool, E>
+                where P: FnOnce(&mut Token) -> Poll<(), E> {
+    match try_result!(skip(buf, parsef)) {
+        Ok(()) => Ok(Async::Ready(true)),
+        Err(_) => Ok(Async::Ready(false))
+    }
+}
+
 
 //============ Concrete Token Parsers ========================================
 
 //------------ Specific Octets -----------------------------------------------
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct OctetError {
-    expected: u8,
-    got: u8
+pub fn octet(token: &mut Token, value: u8) -> Poll<(), TokenError> {
+    let first = try_ready!(token.first());
+    if first == value {
+        token.advance(1);
+        Ok(Async::Ready(()))
+    }
+    else {
+        Err(TokenError)
+    }
 }
 
-
-pub fn skip_octet(buf: &mut EasyBuf, octet: u8) -> Poll<(), OctetError> {
-    skip(buf, |token| {
-        let first = try_ready!(token.first());
-        if first == octet {
-            token.advance(1);
-            Ok(Async::Ready(()))
-        }
-        else {
-            Err(OctetError{expected: octet, got: first})
-        }
-    })
-}
- 
-
-//------------ Octet Categories ----------------------------------------------
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CatError;
-
-
-pub fn cat<O>(token: &mut Token, test: O) -> Poll<(), CatError>
-           where O: FnOnce(u8) -> bool {
-    match try_ready!(token.advance_if(test)) {
-        true => Ok(Async::Ready(())),
-        false => Err(CatError),
+pub fn opt_octet<E>(token: &mut Token, value: u8) -> Poll<bool, E> {
+    let first = try_ready!(token.first());
+    if first == value {
+        token.advance(1);
+        Ok(Async::Ready(true))
+    }
+    else {
+        Ok(Async::Ready(false))
     }
 }
 
 
-pub fn cats<O>(token: &mut Token, test: O) -> Poll<(), CatError>
+pub fn skip_octet(buf: &mut EasyBuf, value: u8) -> Poll<(), TokenError> {
+    skip(buf, |token| octet(token, value))
+}
+
+
+pub fn skip_opt_octet(buf: &mut EasyBuf, value: u8) -> Poll<bool, TokenError> {
+    match try_result!(skip_octet(buf, value)) {
+        Ok(()) => Ok(Async::Ready(true)),
+        Err(_) => Ok(Async::Ready(false))
+    }
+}
+
+
+//------------ Octet Categories ----------------------------------------------
+
+pub fn cat<O>(token: &mut Token, test: O) -> Poll<(), TokenError>
+           where O: FnOnce(u8) -> bool {
+    match try_ready!(token.advance_if(test)) {
+        true => Ok(Async::Ready(())),
+        false => Err(TokenError),
+    }
+}
+
+
+pub fn cats<O>(token: &mut Token, test: O) -> Poll<(), TokenError>
             where O: Fn(u8) -> bool {
     try_ready!(cat(token, |ch| test(ch)));
     try_ready!(opt_cats(token, |ch| test(ch)));
@@ -165,7 +185,7 @@ pub fn cats<O>(token: &mut Token, test: O) -> Poll<(), CatError>
 }
 
 
-pub fn opt_cats<O>(token: &mut Token, test: O) -> Poll<bool, CatError>
+pub fn opt_cats<O>(token: &mut Token, test: O) -> Poll<bool, TokenError>
                 where O: Fn(u8) -> bool {
     if !try_ready!(token.advance_if(|ch| test(ch))) {
         return Ok(Async::Ready(false))
@@ -180,10 +200,7 @@ pub fn opt_cats<O>(token: &mut Token, test: O) -> Poll<bool, CatError>
 
 //------------ Literals ------------------------------------------------------
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct LiteralError;
-
-pub fn literal(token: &mut Token, lit: &[u8]) -> Poll<(), LiteralError> {
+pub fn literal(token: &mut Token, lit: &[u8]) -> Poll<(), TokenError> {
     use std::cmp::min;
     use std::ascii::AsciiExt;
 
@@ -195,7 +212,7 @@ pub fn literal(token: &mut Token, lit: &[u8]) -> Poll<(), LiteralError> {
         let litreduced = &lit[..minlen];
 
         if !reduced.eq_ignore_ascii_case(litreduced) {
-            return Err(LiteralError)
+            return Err(TokenError)
         }
         else if minlen < litlen {
             return Ok(Async::NotReady)
@@ -208,11 +225,23 @@ pub fn literal(token: &mut Token, lit: &[u8]) -> Poll<(), LiteralError> {
 
 
 pub fn parse_literal(buf: &mut EasyBuf, lit: &[u8])
-                     -> Poll<EasyBuf, LiteralError> {
+                     -> Poll<EasyBuf, TokenError> {
     parse(buf, |token| literal(token, lit))
 }
 
-pub fn skip_literal(buf: &mut EasyBuf, lit: &[u8]) -> Poll<(), LiteralError> {
+pub fn skip_literal(buf: &mut EasyBuf, lit: &[u8]) -> Poll<(), TokenError> {
     skip(buf, |token| literal(token, lit))
 }
+
+pub fn translate_literal<T>(buf: &mut EasyBuf, lit: &[u8], res: T)
+                            -> Poll<T, TokenError> {
+    try_ready!(skip_literal(buf, lit));
+    Ok(Async::Ready(res))
+}
+
+
+//============ Errors ========================================================
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TokenError;
 

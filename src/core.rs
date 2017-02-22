@@ -4,7 +4,7 @@
 
 use ::{Async, EasyBuf, Poll};
 use ::parse::token;
-use ::parse::token::{CatError, Token};
+use ::parse::token::{TokenError, Token};
 
 
 //------------ ALPHA ---------------------------------------------------------
@@ -13,11 +13,11 @@ pub fn test_alpha(ch: u8) -> bool {
     (ch >= 0x41 && ch <= 0x5A) || (ch >= 0x61 && ch <= 0x7A)
 }
 
-pub fn alpha(token: &mut Token) -> Poll<(), CatError> {
+pub fn alpha(token: &mut Token) -> Poll<(), TokenError> {
     token::cat(token, test_alpha)
 }
 
-pub fn alphas(token: &mut Token) -> Poll<(), CatError> {
+pub fn alphas(token: &mut Token) -> Poll<(), TokenError> {
     token::cats(token, test_alpha)
 }
 
@@ -28,11 +28,11 @@ pub fn test_bit(ch: u8) -> bool {
     ch == b'0' || ch == b'1'
 }
 
-pub fn bit(token: &mut Token) -> Poll<(), CatError> {
+pub fn bit(token: &mut Token) -> Poll<(), TokenError> {
     token::cat(token, test_bit)
 }
 
-pub fn bits(token: &mut Token) -> Poll<(), CatError> {
+pub fn bits(token: &mut Token) -> Poll<(), TokenError> {
     token::cats(token, test_bit)
 }
 
@@ -44,11 +44,11 @@ pub fn test_char(ch: u8) -> bool {
     ch > 0 && ch < 0x80
 }
 
-pub fn char(token: &mut Token) -> Poll<(), CatError> {
+pub fn char(token: &mut Token) -> Poll<(), TokenError> {
     token::cat(token, test_char)
 }
 
-pub fn chars(token: &mut Token) -> Poll<(), CatError> {
+pub fn chars(token: &mut Token) -> Poll<(), TokenError> {
     token::cats(token, test_char)
 }
 
@@ -59,20 +59,20 @@ pub fn test_cr(ch: u8) -> bool {
     ch == 0x0D
 }
 
-pub fn cr(token: &mut Token) -> Poll<(), CatError> {
+pub fn cr(token: &mut Token) -> Poll<(), TokenError> {
     token::cat(token, test_cr)
 }
 
 
 //------------ CRLF ----------------------------------------------------------
 
-pub fn crlf(token: &mut Token) -> Poll<(), CatError> {
-    try_ready!(token.expect(test_cr, || CatError));
-    try_ready!(token.expect(test_lf, || CatError));
+pub fn crlf(token: &mut Token) -> Poll<(), TokenError> {
+    try_ready!(token.expect(test_cr, || TokenError));
+    try_ready!(token.expect(test_lf, || TokenError));
     Ok(Async::Ready(()))
 }
 
-pub fn skip_crlf(buf: &mut EasyBuf) -> Poll<(), CatError> {
+pub fn skip_crlf(buf: &mut EasyBuf) -> Poll<(), TokenError> {
     token::skip(buf, crlf)
 }
 
@@ -83,11 +83,11 @@ pub fn test_ctl(ch: u8) -> bool {
     ch < 0x20 || ch == 0x7F
 }
 
-pub fn ctl(token: &mut Token) -> Poll<(), CatError> {
+pub fn ctl(token: &mut Token) -> Poll<(), TokenError> {
     token::cat(token, test_ctl)
 }
 
-pub fn ctls(token: &mut Token) -> Poll<(), CatError> {
+pub fn ctls(token: &mut Token) -> Poll<(), TokenError> {
     token::cats(token, test_ctl)
 }
 
@@ -98,17 +98,17 @@ pub fn test_digit(ch: u8) -> bool {
     ch >= 0x30 && ch <= 0x39
 }
 
-pub fn digit(token: &mut Token) -> Poll<(), CatError> {
+pub fn digit(token: &mut Token) -> Poll<(), TokenError> {
     token::cat(token, test_digit)
 }
 
-pub fn digits(token: &mut Token) -> Poll<(), CatError> {
+pub fn digits(token: &mut Token) -> Poll<(), TokenError> {
     token::cats(token, test_digit)
 }
 
 macro_rules! convert_uint {
     ( $token_name:ident, $uint:ty, $parsef:expr, $radix:expr) => {
-        pub fn $token_name(buf: &mut EasyBuf) -> Poll<$uint, CatError> {
+        pub fn $token_name(buf: &mut EasyBuf) -> Poll<$uint, TokenError> {
             token::convert(buf, $parsef, |digits| {
                 let digits = digits?;
                 let mut res = 0 as $uint;
@@ -116,11 +116,11 @@ macro_rules! convert_uint {
                     let x = (*item as char).to_digit($radix).unwrap() as $uint;
                     res = match res.checked_mul($radix) {
                         Some(x) => x,
-                        None => return Err(CatError)
+                        None => return Err(TokenError)
                     };
                     res = match res.checked_add(x) {
                         Some(x) => x,
-                        None => return Err(CatError)
+                        None => return Err(TokenError)
                     };
                 }
                 Ok(res)
@@ -141,8 +141,12 @@ pub fn test_dquote(ch: u8) -> bool {
     ch == b'"'
 }
 
-pub fn dquote(token: &mut Token) -> Poll<(), CatError> {
+pub fn dquote(token: &mut Token) -> Poll<(), TokenError> {
     token::cat(token, test_dquote)
+}
+
+pub fn skip_dquote(buf: &mut EasyBuf) -> Poll<(), TokenError> {
+    token::skip(buf, dquote)
 }
 
 
@@ -153,11 +157,11 @@ pub fn test_hexdig(ch: u8) -> bool {
         || (ch >= 0x61 && ch <= 0x66)
 }
 
-pub fn hexdig(token: &mut Token) -> Poll<(), CatError> {
+pub fn hexdig(token: &mut Token) -> Poll<(), TokenError> {
     token::cat(token, test_hexdig)
 }
 
-pub fn hexdigs(token: &mut Token) -> Poll<(), CatError> {
+pub fn hexdigs(token: &mut Token) -> Poll<(), TokenError> {
     token::cats(token, test_hexdig)
 }
 
@@ -173,7 +177,7 @@ pub fn test_htab(ch: u8) -> bool {
     ch == 0x09
 }
 
-pub fn htab(token: &mut Token) -> Poll<(), CatError> {
+pub fn htab(token: &mut Token) -> Poll<(), TokenError> {
     token::cat(token, test_htab)
 }
 
@@ -184,14 +188,14 @@ pub fn test_lf(ch: u8) -> bool {
     ch == 0x0A
 }
 
-pub fn lf(token: &mut Token) -> Poll<(), CatError> {
+pub fn lf(token: &mut Token) -> Poll<(), TokenError> {
     token::cat(token, test_lf)
 }
 
 
 //------------ LWSP ----------------------------------------------------------
 
-pub fn lwsp(token: &mut Token) -> Poll<(), CatError> {
+pub fn lwsp(token: &mut Token) -> Poll<(), TokenError> {
         loop {
             if try_result!(wsp(token)).is_err()
                     || try_result!(crlf(token)).is_err() {
@@ -200,7 +204,7 @@ pub fn lwsp(token: &mut Token) -> Poll<(), CatError> {
         }
 }
 
-pub fn skip_lwsp(buf: &mut EasyBuf) -> Poll<(), CatError> {
+pub fn skip_lwsp(buf: &mut EasyBuf) -> Poll<(), TokenError> {
     token::skip(buf, lwsp)
 }
 
@@ -211,11 +215,11 @@ pub fn test_sp(ch: u8) -> bool {
     ch == 0x20
 }
 
-pub fn sp(token: &mut Token) -> Poll<(), CatError> {
+pub fn sp(token: &mut Token) -> Poll<(), TokenError> {
     token::cat(token, test_sp)
 }
 
-pub fn sps(token: &mut Token) -> Poll<(), CatError> {
+pub fn sps(token: &mut Token) -> Poll<(), TokenError> {
     token::cats(token, test_sp)
 }
 
@@ -226,11 +230,11 @@ pub fn test_vchar(ch: u8) -> bool {
     ch >= 0x21 && ch <= 0x7E
 }
 
-pub fn vchar(token: &mut Token) -> Poll<(), CatError> {
+pub fn vchar(token: &mut Token) -> Poll<(), TokenError> {
     token::cat(token, test_vchar)
 }
 
-pub fn vchars(token: &mut Token) -> Poll<(), CatError> {
+pub fn vchars(token: &mut Token) -> Poll<(), TokenError> {
     token::cats(token, test_vchar)
 }
 
@@ -241,16 +245,24 @@ pub fn test_wsp(ch: u8) -> bool {
     ch == 0x20 || ch == 0x09
 }
 
-pub fn wsp(token: &mut Token) -> Poll<(), CatError> {
+pub fn wsp(token: &mut Token) -> Poll<(), TokenError> {
     token::cat(token, test_wsp)
 }
 
-pub fn wsps(token: &mut Token) -> Poll<(), CatError> {
+pub fn wsps(token: &mut Token) -> Poll<(), TokenError> {
     token::cats(token, test_wsp)
 }
 
-pub fn opt_wsps(token: &mut Token) -> Poll<bool, CatError> {
+pub fn opt_wsps(token: &mut Token) -> Poll<bool, TokenError> {
     token::opt_cats(token, test_wsp)
+}
+
+pub fn skip_wsps(buf: &mut EasyBuf) -> Poll<(), TokenError> {
+    token::skip(buf, wsps)
+}
+
+pub fn skip_opt_wsps(buf: &mut EasyBuf) -> Poll<bool, TokenError> {
+    token::skip_opt(buf, wsps)
 }
 
 
