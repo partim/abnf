@@ -6,4 +6,4 @@ authors = ["Martin Hoffmann <hn@nvnc.de>"]
 [dependencies]
 futures    = "0.1.10"
 #tokio-core = "0.1.4"
-tokio-core = { git = "https://github.com/partim/tokio-core.git" }
+tokio-core = { git = "https://github.com/tokio-rs/tokio-core.git" }
