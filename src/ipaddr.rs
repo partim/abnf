@@ -1,23 +1,24 @@
 
 use std::net::{Ipv4Addr, Ipv6Addr};
-use futures::Async;
-use tokio_core::io::EasyBuf;
-use super::{core, parse};
-use super::core::{u16_hexdigs, u8_digits};
+use ::{Async, EasyBuf, Poll};
+use ::parse::{rule, token};
+use ::core::{u16_hexdigs, u8_digits};
  
 
 //------------ parse_ipv4addr ------------------------------------------------
 
 /// Parses an IPv4 address
-pub fn parse_ipv4_addr(buf: &mut EasyBuf) -> parse::Poll<Ipv4Addr> {
-    let a = try_ready!(core::u8_digits(buf));
-    try_ready!(parse::cat(buf, |ch| ch == b'.'));
-    let b = try_ready!(core::u8_digits(buf));
-    try_ready!(parse::cat(buf, |ch| ch == b'.'));
-    let c = try_ready!(core::u8_digits(buf));
-    try_ready!(parse::cat(buf, |ch| ch == b'.'));
-    let d = try_ready!(core::u8_digits(buf));
-    Ok(Async::Ready(Ipv4Addr::new(a, b, c, d)))
+pub fn parse_ipv4_addr(buf: &mut EasyBuf) -> Poll<Ipv4Addr, IpaddrError> {
+    rule::group(buf, |buf| {
+        let a = try_ready!(u8_digits(buf));
+        try_ready!(token::skip_octet(buf, b'.'));
+        let b = try_ready!(u8_digits(buf));
+        try_ready!(token::skip_octet(buf, b'.'));
+        let c = try_ready!(u8_digits(buf));
+        try_ready!(token::skip_octet(buf, b'.'));
+        let d = try_ready!(u8_digits(buf));
+        Ok(Async::Ready(Ipv4Addr::new(a, b, c, d)))
+    })
 }
 
 
@@ -27,96 +28,104 @@ pub fn parse_ipv4_addr(buf: &mut EasyBuf) -> parse::Poll<Ipv4Addr> {
 ///
 //  IPv6-addr      = IPv6-full / IPv6-comp / IPv6v4-full / IPv6v4-comp
 //
-pub fn parse_ipv6_addr(buf: &mut EasyBuf) -> parse::Poll<Ipv6Addr> {
-    if let Ok(some) = parse::try(buf, ipv6_full) { return Ok(some) }
-    if let Ok(some) = parse::try(buf, ipv6_comp) { return Ok(some) }
-    if let Ok(some) = parse::try(buf, ipv6v4_full) { return Ok(some) }
-    if let Ok(some) = parse::try(buf, ipv6v4_comp) { return Ok(some) }
-    Err(parse::Error)
+pub fn parse_ipv6_addr(buf: &mut EasyBuf) -> Poll<Ipv6Addr, IpaddrError> {
+    try_fail!(ipv6_full(buf));
+    try_fail!(ipv6_comp(buf));
+    try_fail!(ipv6v4_full(buf));
+    try_fail!(ipv6v4_comp(buf));
+    Err(IpaddrError)
 }
 
 //  IPv6-full      = IPv6-hex 7(":" IPv6-hex)
-fn ipv6_full(buf: &mut EasyBuf) -> parse::Poll<Ipv6Addr> {
-    let a = try_ready!(core::u16_hexdigs(buf));
-    try_ready!(parse::cat(buf, |ch| ch == b':'));
-    let b = try_ready!(core::u16_hexdigs(buf));
-    try_ready!(parse::cat(buf, |ch| ch == b':'));
-    let c = try_ready!(core::u16_hexdigs(buf));
-    try_ready!(parse::cat(buf, |ch| ch == b':'));
-    let d = try_ready!(core::u16_hexdigs(buf));
-    try_ready!(parse::cat(buf, |ch| ch == b':'));
-    let e = try_ready!(core::u16_hexdigs(buf));
-    try_ready!(parse::cat(buf, |ch| ch == b':'));
-    let f = try_ready!(core::u16_hexdigs(buf));
-    try_ready!(parse::cat(buf, |ch| ch == b':'));
-    let g = try_ready!(core::u16_hexdigs(buf));
-    try_ready!(parse::cat(buf, |ch| ch == b':'));
-    let h = try_ready!(core::u16_hexdigs(buf));
-    Ok(Async::Ready(Ipv6Addr::new(a, b, c, d, e, f, g, h)))
+fn ipv6_full(buf: &mut EasyBuf) -> Poll<Ipv6Addr, IpaddrError> {
+    rule::group(buf, |buf| {
+        let a = try_ready!(u16_hexdigs(buf));
+        try_ready!(token::skip_octet(buf, b':'));
+        let b = try_ready!(u16_hexdigs(buf));
+        try_ready!(token::skip_octet(buf, b':'));
+        let c = try_ready!(u16_hexdigs(buf));
+        try_ready!(token::skip_octet(buf, b':'));
+        let d = try_ready!(u16_hexdigs(buf));
+        try_ready!(token::skip_octet(buf, b':'));
+        let e = try_ready!(u16_hexdigs(buf));
+        try_ready!(token::skip_octet(buf, b':'));
+        let f = try_ready!(u16_hexdigs(buf));
+        try_ready!(token::skip_octet(buf, b':'));
+        let g = try_ready!(u16_hexdigs(buf));
+        try_ready!(token::skip_octet(buf, b':'));
+        let h = try_ready!(u16_hexdigs(buf));
+        Ok(Async::Ready(Ipv6Addr::new(a, b, c, d, e, f, g, h)))
+    })
 }
 
 // IPv6-comp      = [IPv6-hex *5(":" IPv6-hex)] "::"
 //                  [IPv6-hex *5(":" IPv6-hex)]
-fn ipv6_comp(buf: &mut EasyBuf) -> parse::Poll<Ipv6Addr> {
-    let (mut left, left_count) = try_ready!(ipv6_comp_left(buf, 6));
-    let (right, right_count) = try_ready!(ipv6_comp_right(buf,
-                                                          6 - left_count));
-    for i in 0..right_count {
-        left[8 - right_count + i] = right[i];
-    }
-    Ok(Async::Ready(Ipv6Addr::new(left[0], left[1], left[2], left[3],
-                                  left[4], left[5], left[6], left[7])))
+fn ipv6_comp(buf: &mut EasyBuf) -> Poll<Ipv6Addr, IpaddrError> {
+    rule::group(buf, |buf| {
+        let (mut left, left_count) = try_ready!(ipv6_comp_left(buf, 6));
+        let (right, right_count) = try_ready!(ipv6_comp_right(buf,
+                                                              6 - left_count));
+        for i in 0..right_count {
+            left[8 - right_count + i] = right[i];
+        }
+        Ok(Async::Ready(Ipv6Addr::new(left[0], left[1], left[2], left[3],
+                                      left[4], left[5], left[6], left[7])))
+    })
 }
 
 // IPv6v4-full    = IPv6-hex 5(":" IPv6-hex) ":" IPv4-address-literal
-fn ipv6v4_full(buf: &mut EasyBuf) -> parse::Poll<Ipv6Addr> {
-    let a = try_ready!(u16_hexdigs(buf));
-    try_ready!(parse::cat(buf, |ch| ch == b':'));
-    let b = try_ready!(u16_hexdigs(buf));
-    try_ready!(parse::cat(buf, |ch| ch == b':'));
-    let c = try_ready!(u16_hexdigs(buf));
-    try_ready!(parse::cat(buf, |ch| ch == b':'));
-    let d = try_ready!(u16_hexdigs(buf));
-    try_ready!(parse::cat(buf, |ch| ch == b':'));
-    let e = try_ready!(u16_hexdigs(buf));
-    try_ready!(parse::cat(buf, |ch| ch == b':'));
-    let f = try_ready!(u16_hexdigs(buf));
-    try_ready!(parse::cat(buf, |ch| ch == b':'));
-    let g1 = try_ready!(u8_digits(buf));
-    try_ready!(parse::cat(buf, |ch| ch == b'.'));
-    let g2 = try_ready!(u8_digits(buf));
-    try_ready!(parse::cat(buf, |ch| ch == b'.'));
-    let h1 = try_ready!(u8_digits(buf));
-    try_ready!(parse::cat(buf, |ch| ch == b'.'));
-    let h2 = try_ready!(u8_digits(buf));
-    Ok(Async::Ready(Ipv6Addr::new(a, b, c, d, e, f,
-                                  (g1 as u16) << 8 | (g2 as u16),
-                                  (h1 as u16) << 8 | (h2 as u16))))
+fn ipv6v4_full(buf: &mut EasyBuf) -> Poll<Ipv6Addr, IpaddrError> {
+    rule::group(buf, |buf| {
+        let a = try_ready!(u16_hexdigs(buf));
+        try_ready!(token::skip_octet(buf, b':'));
+        let b = try_ready!(u16_hexdigs(buf));
+        try_ready!(token::skip_octet(buf, b':'));
+        let c = try_ready!(u16_hexdigs(buf));
+        try_ready!(token::skip_octet(buf, b':'));
+        let d = try_ready!(u16_hexdigs(buf));
+        try_ready!(token::skip_octet(buf, b':'));
+        let e = try_ready!(u16_hexdigs(buf));
+        try_ready!(token::skip_octet(buf, b':'));
+        let f = try_ready!(u16_hexdigs(buf));
+        try_ready!(token::skip_octet(buf, b':'));
+        let g1 = try_ready!(u8_digits(buf));
+        try_ready!(token::skip_octet(buf, b'.'));
+        let g2 = try_ready!(u8_digits(buf));
+        try_ready!(token::skip_octet(buf, b'.'));
+        let h1 = try_ready!(u8_digits(buf));
+        try_ready!(token::skip_octet(buf, b'.'));
+        let h2 = try_ready!(u8_digits(buf));
+        Ok(Async::Ready(Ipv6Addr::new(a, b, c, d, e, f,
+                                      (g1 as u16) << 8 | (g2 as u16),
+                                      (h1 as u16) << 8 | (h2 as u16))))
+    })
 }
 
 // IPv6v4-comp    = [IPv6-hex *3(":" IPv6-hex)] "::"
 //                  [IPv6-hex *3(":" IPv6-hex) ":"]
 //                  IPv4-address-literal
-fn ipv6v4_comp(buf: &mut EasyBuf) -> parse::Poll<Ipv6Addr> {
-    let (mut left, left_count) = try_ready!(ipv6_comp_left(buf, 4));
-    let (right, right_count) = try_ready!(ipv6_comp_right(buf,
-                                                          4 - left_count));
-    let v4 = try_ready!(parse_ipv4_addr(buf));
-    let v4 = v4.octets();
-    for i in 0..right_count {
-        left[6 - right_count + 1] = right[i];
-    }
-    left[6] = (v4[0] as u16) << 8 | (v4[1] as u16);
-    left[7] = (v4[2] as u16) << 8 | (v4[3] as u16);
-    Ok(Async::Ready(Ipv6Addr::new(left[0], left[1], left[2], left[3],
-                                  left[4], left[5], left[6], left[7])))
+fn ipv6v4_comp(buf: &mut EasyBuf) -> Poll<Ipv6Addr, IpaddrError> {
+    rule::group(buf, |buf| {
+        let (mut left, left_count) = try_ready!(ipv6_comp_left(buf, 4));
+        let (right, right_count) = try_ready!(ipv6_comp_right(buf,
+                                                              4 - left_count));
+        let v4 = try_ready!(parse_ipv4_addr(buf));
+        let v4 = v4.octets();
+        for i in 0..right_count {
+            left[6 - right_count + 1] = right[i];
+        }
+        left[6] = (v4[0] as u16) << 8 | (v4[1] as u16);
+        left[7] = (v4[2] as u16) << 8 | (v4[3] as u16);
+        Ok(Async::Ready(Ipv6Addr::new(left[0], left[1], left[2], left[3],
+                                      left[4], left[5], left[6], left[7])))
+    })
 }
 
 /// Parses the left hand side of a compressed IPv6 address.
 ///
 /// Returns the parsed components and the number of them.
 fn ipv6_comp_left(buf: &mut EasyBuf, max: usize)
-                  -> parse::Poll<([u16; 8], usize)> {
+                  -> Poll<([u16; 8], usize), IpaddrError> {
     let mut res = [0u16, 0, 0, 0, 0, 0, 0, 0];
 
     // Minimum size is two: b"::" or b"0:"
@@ -133,7 +142,7 @@ fn ipv6_comp_left(buf: &mut EasyBuf, max: usize)
     // double colon
     for i in 0..max {
         let v = try_ready!(u16_hexdigs(buf));
-        let _ = try_ready!(parse::cat(buf, |ch| ch == b':'));
+        try_ready!(token::skip_octet(buf, b':'));
         res[i] = v;
         if buf.as_slice().first() == Some(&b':') {
             buf.drain_to(1);
@@ -148,7 +157,7 @@ fn ipv6_comp_left(buf: &mut EasyBuf, max: usize)
 ///
 /// Returns the parsed components and the number of them.
 fn ipv6_comp_right(buf: &mut EasyBuf, max: usize)
-                   -> parse::Poll<([u16; 8], usize)> {
+                   -> Poll<([u16; 8], usize), IpaddrError> {
     let mut res = [0u16, 0, 0, 0, 0, 0, 0, 0];
 
     for i in 0..max {
@@ -159,14 +168,14 @@ fn ipv6_comp_right(buf: &mut EasyBuf, max: usize)
                     return Ok(Async::Ready((res, 0)))
                 }
                 else {
-                    return Err(parse::Error)
+                    return Err(IpaddrError)
                 }
             }
             Ok(Async::Ready(v)) => {
                 res[i] = v;
             }
         }
-        match parse::cat(buf, |ch| ch == b':') {
+        match token::skip_octet(buf, b':') {
             Ok(Async::Ready(_)) => {
                 if i == max - 1 {
                     break;
@@ -178,6 +187,24 @@ fn ipv6_comp_right(buf: &mut EasyBuf, max: usize)
     Ok(Async::Ready((res, max)))
 }
 
+
+//------------ IpaddrError ---------------------------------------------------
+
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct IpaddrError;
+
+impl From<token::OctetError> for IpaddrError {
+    fn from(_: token::OctetError) -> IpaddrError {
+        IpaddrError
+    }
+}
+
+impl From<token::CatError> for IpaddrError {
+    fn from(_: token::CatError) -> IpaddrError {
+        IpaddrError
+    }
+}
 
 //============ Test =========================================================
 
@@ -230,4 +257,3 @@ mod test {
         );
     }
 }
-

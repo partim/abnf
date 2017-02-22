@@ -1,11 +1,10 @@
 //! Core Rules
 //!
 //! These are defined in RFC 5234, appendix B.1.
-//!
 
-use futures::Async;
-use tokio_core::io::EasyBuf;
-use super::parse;
+use ::{Async, EasyBuf, Poll};
+use ::parse::token;
+use ::parse::token::{CatError, Token};
 
 
 //------------ ALPHA ---------------------------------------------------------
@@ -14,17 +13,12 @@ pub fn test_alpha(ch: u8) -> bool {
     (ch >= 0x41 && ch <= 0x5A) || (ch >= 0x61 && ch <= 0x7A)
 }
 
-pub fn alpha(buf: &mut EasyBuf) -> parse::Poll<u8> {
-    parse::cat(buf, test_alpha)
+pub fn alpha(token: &mut Token) -> Poll<(), CatError> {
+    token::cat(token, test_alpha)
 }
 
-pub fn alphas(buf: &mut EasyBuf) -> parse::Poll<EasyBuf> {
-    parse::cats(buf, test_alpha)
-}
-
-/// Parses a final `1*ALPHA`.
-pub fn final_alphas(buf: &mut EasyBuf) -> parse::Result<EasyBuf> {
-    parse::final_cats(buf, test_alpha)
+pub fn alphas(token: &mut Token) -> Poll<(), CatError> {
+    token::cats(token, test_alpha)
 }
 
 
@@ -34,17 +28,14 @@ pub fn test_bit(ch: u8) -> bool {
     ch == b'0' || ch == b'1'
 }
 
-pub fn bit(buf: &mut EasyBuf) -> parse::Poll<bool> {
-    Ok(Async::Ready(try_ready!(parse::cat(buf, test_bit)) == b'1'))
+pub fn bit(token: &mut Token) -> Poll<(), CatError> {
+    token::cat(token, test_bit)
 }
 
-pub fn bits(buf: &mut EasyBuf) -> parse::Poll<EasyBuf> {
-    parse::cats(buf, test_bit)
+pub fn bits(token: &mut Token) -> Poll<(), CatError> {
+    token::cats(token, test_bit)
 }
 
-pub fn final_bits(buf: &mut EasyBuf) -> parse::Result<EasyBuf> {
-    parse::final_cats(buf, test_bit)
-}
 
 
 //------------ NULL ----------------------------------------------------------
@@ -53,16 +44,12 @@ pub fn test_char(ch: u8) -> bool {
     ch > 0 && ch < 0x80
 }
 
-pub fn char(buf: &mut EasyBuf) -> parse::Poll<u8> {
-    parse::cat(buf, test_char)
+pub fn char(token: &mut Token) -> Poll<(), CatError> {
+    token::cat(token, test_char)
 }
 
-pub fn chars(buf: &mut EasyBuf) -> parse::Poll<EasyBuf> {
-    parse::cats(buf, test_char)
-}
-
-pub fn final_chars(buf: &mut EasyBuf) -> parse::Result<EasyBuf> {
-    parse::final_cats(buf, test_char)
+pub fn chars(token: &mut Token) -> Poll<(), CatError> {
+    token::cats(token, test_char)
 }
 
 
@@ -72,30 +59,21 @@ pub fn test_cr(ch: u8) -> bool {
     ch == 0x0D
 }
 
-pub fn cr(buf: &mut EasyBuf) -> parse::Poll<u8> {
-    parse::cat(buf, test_cr)
+pub fn cr(token: &mut Token) -> Poll<(), CatError> {
+    token::cat(token, test_cr)
 }
 
 
 //------------ CRLF ----------------------------------------------------------
 
-pub fn crlf(buf: &mut EasyBuf) -> parse::Poll<()> {
-    match buf.len() {
-        0 => Ok(Async::NotReady),
-        1 => {
-            if test_cr(buf.as_slice()[0]) { Ok(Async::NotReady) }
-            else { Err(parse::Error) }
-        }
-        _ => {
-            if test_cr(buf.as_slice()[0]) && test_lf(buf.as_slice()[1]) {
-                buf.drain_to(2);
-                Ok(Async::Ready(()))
-            }
-            else {
-                Err(parse::Error)
-            }
-        }
-    }
+pub fn crlf(token: &mut Token) -> Poll<(), CatError> {
+    try_ready!(token.expect(test_cr, || CatError));
+    try_ready!(token.expect(test_lf, || CatError));
+    Ok(Async::Ready(()))
+}
+
+pub fn skip_crlf(buf: &mut EasyBuf) -> Poll<(), CatError> {
+    token::skip(buf, crlf)
 }
 
 
@@ -105,16 +83,12 @@ pub fn test_ctl(ch: u8) -> bool {
     ch < 0x20 || ch == 0x7F
 }
 
-pub fn ctl(buf: &mut EasyBuf) -> parse::Poll<u8> {
-    parse::cat(buf, test_ctl)
+pub fn ctl(token: &mut Token) -> Poll<(), CatError> {
+    token::cat(token, test_ctl)
 }
 
-pub fn ctls(buf: &mut EasyBuf) -> parse::Poll<EasyBuf> {
-    parse::cats(buf, test_ctl)
-}
-
-pub fn final_ctls(buf: &mut EasyBuf) -> parse::Result<EasyBuf> {
-    parse::final_cats(buf, test_ctl)
+pub fn ctls(token: &mut Token) -> Poll<(), CatError> {
+    token::cats(token, test_ctl)
 }
 
 
@@ -124,42 +98,41 @@ pub fn test_digit(ch: u8) -> bool {
     ch >= 0x30 && ch <= 0x39
 }
 
-pub fn digit(buf: &mut EasyBuf) -> parse::Poll<u8> {
-    parse::cat(buf, test_digit)
+pub fn digit(token: &mut Token) -> Poll<(), CatError> {
+    token::cat(token, test_digit)
 }
 
-pub fn digits(buf: &mut EasyBuf) -> parse::Poll<EasyBuf> {
-    parse::cats(buf, test_digit)
+pub fn digits(token: &mut Token) -> Poll<(), CatError> {
+    token::cats(token, test_digit)
 }
 
-pub fn u8_digits(buf: &mut EasyBuf) -> parse::Poll<u8> {
-    let res = try_ready!(digits(buf));
-    let res = res.as_slice();
-    match res.len() {
-        1 => {
-            Ok(Async::Ready(res[0] - b'0'))
+macro_rules! convert_uint {
+    ( $token_name:ident, $uint:ty, $parsef:expr, $radix:expr) => {
+        pub fn $token_name(buf: &mut EasyBuf) -> Poll<$uint, CatError> {
+            token::convert(buf, $parsef, |digits| {
+                let digits = digits?;
+                let mut res = 0 as $uint;
+                for item in digits {
+                    let x = (*item as char).to_digit($radix).unwrap() as $uint;
+                    res = match res.checked_mul($radix) {
+                        Some(x) => x,
+                        None => return Err(CatError)
+                    };
+                    res = match res.checked_add(x) {
+                        Some(x) => x,
+                        None => return Err(CatError)
+                    };
+                }
+                Ok(res)
+            })
         }
-        2 => {
-            Ok(Async::Ready((res[0] - b'0') * 10 + res[1] - b'0'))
-        }
-        3 => {
-            let res = (((res[0] - b'0') as u16) * 100)
-                    + (((res[1] - b'0') as u16) * 10)
-                    + (res[2] - b'0') as u16;
-            if res > 255 {
-                Err(parse::Error)
-            }
-            else {
-                Ok(Async::Ready(res as u8))
-            }
-        }
-        _ => Err(parse::Error)
     }
 }
 
-pub fn final_digits(buf: &mut EasyBuf) -> parse::Result<EasyBuf> {
-    parse::final_cats(buf, test_digit)
-}
+convert_uint!(u8_digits, u8, digits, 10);
+convert_uint!(u16_digits, u16, digits, 10);
+convert_uint!(u32_digits, u32, digits, 10);
+convert_uint!(u64_digits, u64, digits, 10);
 
 
 //------------ DQUOTE --------------------------------------------------------
@@ -168,8 +141,8 @@ pub fn test_dquote(ch: u8) -> bool {
     ch == b'"'
 }
 
-pub fn dquote(buf: &mut EasyBuf) -> parse::Poll<u8> {
-    parse::cat(buf, test_dquote)
+pub fn dquote(token: &mut Token) -> Poll<(), CatError> {
+    token::cat(token, test_dquote)
 }
 
 
@@ -180,59 +153,18 @@ pub fn test_hexdig(ch: u8) -> bool {
         || (ch >= 0x61 && ch <= 0x66)
 }
 
-pub fn translate_hexdig(ch: u8) -> u8 {
-    if ch >= 0x30 && ch <= 0x39 {
-        ch - b'0'
-    }
-    else if ch >= 0x41 && ch <= 0x46 {
-        ch - b'A' + 10
-    }
-    else if ch >= 0x61 && ch <= 0x66 {
-        ch - b'a' + 10
-    }
-    else {
-        panic!("not a hexdig");
-    }
+pub fn hexdig(token: &mut Token) -> Poll<(), CatError> {
+    token::cat(token, test_hexdig)
 }
 
-pub fn hexdig(buf: &mut EasyBuf) -> parse::Poll<u8> {
-    parse::cat(buf, test_hexdig)
+pub fn hexdigs(token: &mut Token) -> Poll<(), CatError> {
+    token::cats(token, test_hexdig)
 }
 
-pub fn hexdigs(buf: &mut EasyBuf) -> parse::Poll<EasyBuf> {
-    parse::cats(buf, test_hexdig)
-}
-
-pub fn u16_hexdigs(buf: &mut EasyBuf) -> parse::Poll<u16> {
-    let res = try_ready!(hexdigs(buf));
-    let res = res.as_slice();
-    match res.len() {
-        1 => {
-            Ok(Async::Ready(translate_hexdig(res[0]) as u16))
-        }
-        2 => {
-            Ok(Async::Ready((translate_hexdig(res[0]) as u16) << 4 |
-                            translate_hexdig(res[1]) as u16))
-        }
-        3 => {
-            Ok(Async::Ready((translate_hexdig(res[0]) as u16) << 8 |
-                            (translate_hexdig(res[1]) as u16) << 4 |
-                            translate_hexdig(res[2]) as u16))
-        }
-        4 => {
-            Ok(Async::Ready((translate_hexdig(res[0]) as u16) << 12 |
-                            (translate_hexdig(res[1]) as u16) << 8 |
-                            (translate_hexdig(res[2]) as u16) << 4 |
-                            translate_hexdig(res[3]) as u16))
-        }
-        _ => Err(parse::Error)
-    }
-}
-
-
-pub fn final_hexdig(buf: &mut EasyBuf) -> parse::Result<EasyBuf> {
-    parse::final_cats(buf, test_hexdig)
-}
+convert_uint!(u8_hexdigs, u8, hexdigs, 16);
+convert_uint!(u16_hexdigs, u16, hexdigs, 16);
+convert_uint!(u32_hexdigs, u32, hexdigs, 16);
+convert_uint!(u64_hexdigs, u64, hexdigs, 16);
 
 
 //------------ HTAB ----------------------------------------------------------
@@ -241,8 +173,8 @@ pub fn test_htab(ch: u8) -> bool {
     ch == 0x09
 }
 
-pub fn htab(buf: &mut EasyBuf) -> parse::Poll<u8> {
-    parse::cat(buf, test_htab)
+pub fn htab(token: &mut Token) -> Poll<(), CatError> {
+    token::cat(token, test_htab)
 }
 
 
@@ -252,21 +184,24 @@ pub fn test_lf(ch: u8) -> bool {
     ch == 0x0A
 }
 
-pub fn lf(buf: &mut EasyBuf) -> parse::Poll<u8> {
-    parse::cat(buf, test_lf)
+pub fn lf(token: &mut Token) -> Poll<(), CatError> {
+    token::cat(token, test_lf)
 }
 
 
 //------------ LWSP ----------------------------------------------------------
 
-// Non-final LWSP.
-pub fn lwsp(_buf: &mut EasyBuf) -> parse::Poll<u8> {
-    unimplemented!()
+pub fn lwsp(token: &mut Token) -> Poll<(), CatError> {
+        loop {
+            if try_result!(wsp(token)).is_err()
+                    || try_result!(crlf(token)).is_err() {
+                return Ok(Async::Ready(()))
+            }
+        }
 }
 
-// Final LWSP.
-pub fn final_lwsp(_buf: &mut EasyBuf) -> parse::Poll<u8> {
-    unimplemented!()
+pub fn skip_lwsp(buf: &mut EasyBuf) -> Poll<(), CatError> {
+    token::skip(buf, lwsp)
 }
 
 
@@ -276,16 +211,12 @@ pub fn test_sp(ch: u8) -> bool {
     ch == 0x20
 }
 
-pub fn sp(buf: &mut EasyBuf) -> parse::Poll<u8> {
-    parse::cat(buf, test_sp)
+pub fn sp(token: &mut Token) -> Poll<(), CatError> {
+    token::cat(token, test_sp)
 }
 
-pub fn sps(buf: &mut EasyBuf) -> parse::Poll<EasyBuf> {
-    parse::cats(buf, test_sp)
-}
-
-pub fn final_sps(buf: &mut EasyBuf) -> parse::Result<EasyBuf> {
-    parse::final_cats(buf, test_sp)
+pub fn sps(token: &mut Token) -> Poll<(), CatError> {
+    token::cats(token, test_sp)
 }
 
 
@@ -295,16 +226,12 @@ pub fn test_vchar(ch: u8) -> bool {
     ch >= 0x21 && ch <= 0x7E
 }
 
-pub fn vchar(buf: &mut EasyBuf) -> parse::Poll<u8> {
-    parse::cat(buf, test_vchar)
+pub fn vchar(token: &mut Token) -> Poll<(), CatError> {
+    token::cat(token, test_vchar)
 }
 
-pub fn vchars(buf: &mut EasyBuf) -> parse::Poll<EasyBuf> {
-    parse::cats(buf, test_vchar)
-}
-
-pub fn final_vchars(buf: &mut EasyBuf) -> parse::Result<EasyBuf> {
-    parse::final_cats(buf, test_vchar)
+pub fn vchars(token: &mut Token) -> Poll<(), CatError> {
+    token::cats(token, test_vchar)
 }
 
 
@@ -314,16 +241,16 @@ pub fn test_wsp(ch: u8) -> bool {
     ch == 0x20 || ch == 0x09
 }
 
-pub fn wsp(buf: &mut EasyBuf) -> parse::Poll<u8> {
-    parse::cat(buf, test_wsp)
+pub fn wsp(token: &mut Token) -> Poll<(), CatError> {
+    token::cat(token, test_wsp)
 }
 
-pub fn wsps(buf: &mut EasyBuf) -> parse::Poll<EasyBuf> {
-    parse::cats(buf, test_wsp)
+pub fn wsps(token: &mut Token) -> Poll<(), CatError> {
+    token::cats(token, test_wsp)
 }
 
-pub fn final_wsps(buf: &mut EasyBuf) -> parse::Result<EasyBuf> {
-    parse::final_cats(buf, test_wsp)
+pub fn opt_wsps(token: &mut Token) -> Poll<bool, CatError> {
+    token::opt_cats(token, test_wsp)
 }
 
 
@@ -341,7 +268,7 @@ mod test {
     fn test_u8_digits() {
         for i in 0u8..255 {
             assert_eq!(u8_digits(&mut EasyBuf::from(format!("{} ", i)
-                                                        .into_bytes())),
+                                                    .into_bytes())),
                        Ok(Async::Ready(i)));
         }
         assert!(u8_digits(&mut buf(b"256 ")).is_err());
