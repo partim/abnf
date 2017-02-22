@@ -1,6 +1,7 @@
 /// Token Parsing
 ///
 
+use std::ops;
 use ::{Async, EasyBuf, Poll};
 
 
@@ -74,6 +75,14 @@ impl<'a> Token<'a> {
     }
 }
 
+impl<'a> ops::Deref for Token<'a> {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        self.as_slice()
+    }
+}
+
 
 //------------ Essential Token Parsing Functions -----------------------------
 
@@ -110,6 +119,7 @@ pub fn skip<P, E>(buf: &mut EasyBuf, parsef: P) -> Poll<(), E>
 
 //============ Concrete Token Parsers ========================================
 
+//------------ Specific Octets -----------------------------------------------
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OctetError {
@@ -131,6 +141,8 @@ pub fn skip_octet(buf: &mut EasyBuf, octet: u8) -> Poll<(), OctetError> {
     })
 }
  
+
+//------------ Octet Categories ----------------------------------------------
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CatError;
@@ -164,3 +176,43 @@ pub fn opt_cats<O>(token: &mut Token, test: O) -> Poll<bool, CatError>
         }
     }
 }
+
+
+//------------ Literals ------------------------------------------------------
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LiteralError;
+
+pub fn literal(token: &mut Token, lit: &[u8]) -> Poll<(), LiteralError> {
+    use std::cmp::min;
+    use std::ascii::AsciiExt;
+
+    let litlen = {
+        let len = token.len();
+        let litlen = lit.len();
+        let minlen = min(len, litlen);
+        let reduced = &token.as_slice()[..minlen];
+        let litreduced = &lit[..minlen];
+
+        if !reduced.eq_ignore_ascii_case(litreduced) {
+            return Err(LiteralError)
+        }
+        else if minlen < litlen {
+            return Ok(Async::NotReady)
+        }
+        litlen
+    };
+    token.advance(litlen);
+    Ok(Async::Ready(()))
+}
+
+
+pub fn parse_literal(buf: &mut EasyBuf, lit: &[u8])
+                     -> Poll<EasyBuf, LiteralError> {
+    parse(buf, |token| literal(token, lit))
+}
+
+pub fn skip_literal(buf: &mut EasyBuf, lit: &[u8]) -> Poll<(), LiteralError> {
+    skip(buf, |token| literal(token, lit))
+}
+
