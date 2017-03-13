@@ -10,8 +10,8 @@
 //!
 //! We have different methods for parsing tokens and rules. This is because
 //! the two behave differently when parsing. For tokens, we need to go over
-//! the the input buffer and apply ABNF rules to find the end of the token,
-//! and only then take the whole part to constuct the token from. With rules,
+//! the input buffer and apply ABNF rules to find the end of the token, and
+//! only then take the whole part to constuct the token from. With rules,
 //! we can drain every matched rule from the buffer right away.
 //!
 //!
@@ -22,7 +22,7 @@
 //!
 //! * `P` and `Q` are parsing closures,
 //! * `C` and `D` are converting closures,
-//! * `O` is a octet test closure (used by the cat family of token functions),
+//! * `O` is an octet test closure (used by the cat family of token functions),
 //! * `T` and `U` are types returned on success, and
 //! * `E` and `F` are error types.
 //!

@@ -64,7 +64,7 @@ pub fn cr(token: &mut Token) -> Poll<(), TokenError> {
 }
 
 
-//------------ CRLF ----------------------------------------------------------
+//------------ CRLF and lines terminated by CRLF -----------------------------
 
 pub fn crlf(token: &mut Token) -> Poll<(), TokenError> {
     try_ready!(token.expect(test_cr, || TokenError));
@@ -76,6 +76,26 @@ pub fn skip_crlf(buf: &mut EasyBuf) -> Poll<(), TokenError> {
     token::skip(buf, crlf)
 }
 
+pub fn line(token: &mut Token) -> Poll<(), TokenError> {
+    let mut pos = None;
+    for (i, slice) in token.as_slice().windows(2).enumerate() {
+        if slice == b"\r\n" {
+            pos = Some(i);
+            break;
+        }
+    }
+    match pos {
+        Some(pos) => {
+            token.advance(pos + 2);
+            Ok(Async::Ready(()))
+        }
+        None => Ok(Async::NotReady)
+    }
+}
+
+pub fn parse_line(buf: &mut EasyBuf) -> Poll<EasyBuf, TokenError> {
+    token::parse(buf, line)
+}
 
 //------------ CTL -----------------------------------------------------------
 

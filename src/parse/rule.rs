@@ -20,7 +20,7 @@
 //!
 //! # Implementing Rules as ABNF Operators
 //!
-//! [RFC 5234] defined a number of operators. Here’s how these can be
+//! [RFC 5234] defines a number of operators. Here’s how these can be
 //! implemented using this module.
 //!
 //! ## Concatenation: `Rule1 Rule2`
@@ -55,9 +55,8 @@
 //!
 //! When parsing alternatives, you can ignore errors until you run out of
 //! options. The `try_fail!()` macro helps you with that: It returns early
-//! on success or not ready, returning an error. The inner expression should
-//! use `()` is its error type to indicate that an error is fine. Also, make
-//! sure the inner expressions rewind correctly.
+//! on success or not ready, returning an error. Make sure the inner
+//! expressions rewind correctly.
 //! 
 //! ```
 //! # #[macro_use] extern crate abnf;
@@ -81,7 +80,7 @@
 //! For optional repetition, `Rule` is parsed zero or more times. Generally,
 //! when this happens you will want to parse each element and then do
 //! something with it. This is what `repeat()` is for. It takes a closure
-//! for element parsing and one for element processing. The latter also can
+//! for element parsing and one for element processing. The latter also
 //! also drives repetition by indicating whether more elements should be
 //! parsed or a result returned.
 //!

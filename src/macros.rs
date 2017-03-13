@@ -37,10 +37,9 @@ macro_rules! try_result {
     })
 }
 
-/// A macro for extracting the result from a `Poll<T, E>`.
+/// A macro for extracting an error from a `Poll<T, E>`.
 ///
-/// Turns the `Poll<T, E>` into a `Result<T, E>` by early returning a
-/// possible `Ok(Async::NotReady)`.
+/// Turns the `Poll<T, E>` into an `E` by early returning on any `Ok(_)`.
 #[macro_export]
 macro_rules! try_fail {
     ($e:expr) => (match $e {
