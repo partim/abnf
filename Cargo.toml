@@ -4,6 +4,5 @@ version = "0.1.0"
 authors = ["Martin Hoffmann <hn@nvnc.de>"]
 
 [dependencies]
+bytes      = "0.4.1"
 futures    = "0.1.10"
-#tokio-core = "0.1.4"
-tokio-core = { git = "https://github.com/cloudshipping/tokio-core.git" }

@@ -1,11 +1,11 @@
-#[macro_use] extern crate futures;
-extern crate tokio_core;
-
-pub use futures::{Async, Poll};
-pub use tokio_core::io::EasyBuf;
+extern crate bytes;
+extern crate futures;
 
 #[macro_use] pub mod macros;
 
-pub mod ipaddr;
+pub use bytes::Bytes;
+pub use futures::{Async, Poll};
+
 pub mod core;
+pub mod ipaddr;
 pub mod parse;

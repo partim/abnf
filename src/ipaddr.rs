@@ -1,6 +1,7 @@
 
 use std::net::{Ipv4Addr, Ipv6Addr};
-use ::{Async, EasyBuf, Poll};
+use bytes::Bytes;
+use futures::{Async, Poll};
 use ::parse::{rule, token};
 use ::parse::token::TokenError;
 use ::core::{u16_hexdigs, u8_digits};
@@ -9,7 +10,7 @@ use ::core::{u16_hexdigs, u8_digits};
 //------------ parse_ipv4addr ------------------------------------------------
 
 /// Parses an IPv4 address
-pub fn parse_ipv4_addr(buf: &mut EasyBuf) -> Poll<Ipv4Addr, TokenError> {
+pub fn parse_ipv4_addr(buf: &mut Bytes) -> Poll<Ipv4Addr, TokenError> {
     rule::group(buf, |buf| {
         let a = try_ready!(u8_digits(buf));
         try_ready!(token::skip_octet(buf, b'.'));
@@ -29,7 +30,7 @@ pub fn parse_ipv4_addr(buf: &mut EasyBuf) -> Poll<Ipv4Addr, TokenError> {
 ///
 //  IPv6-addr      = IPv6-full / IPv6-comp / IPv6v4-full / IPv6v4-comp
 //
-pub fn parse_ipv6_addr(buf: &mut EasyBuf) -> Poll<Ipv6Addr, TokenError> {
+pub fn parse_ipv6_addr(buf: &mut Bytes) -> Poll<Ipv6Addr, TokenError> {
     try_fail!(ipv6_full(buf));
     try_fail!(ipv6_comp(buf));
     try_fail!(ipv6v4_full(buf));
@@ -38,7 +39,7 @@ pub fn parse_ipv6_addr(buf: &mut EasyBuf) -> Poll<Ipv6Addr, TokenError> {
 }
 
 //  IPv6-full      = IPv6-hex 7(":" IPv6-hex)
-fn ipv6_full(buf: &mut EasyBuf) -> Poll<Ipv6Addr, TokenError> {
+fn ipv6_full(buf: &mut Bytes) -> Poll<Ipv6Addr, TokenError> {
     rule::group(buf, |buf| {
         let a = try_ready!(u16_hexdigs(buf));
         try_ready!(token::skip_octet(buf, b':'));
@@ -61,7 +62,7 @@ fn ipv6_full(buf: &mut EasyBuf) -> Poll<Ipv6Addr, TokenError> {
 
 // IPv6-comp      = [IPv6-hex *5(":" IPv6-hex)] "::"
 //                  [IPv6-hex *5(":" IPv6-hex)]
-fn ipv6_comp(buf: &mut EasyBuf) -> Poll<Ipv6Addr, TokenError> {
+fn ipv6_comp(buf: &mut Bytes) -> Poll<Ipv6Addr, TokenError> {
     rule::group(buf, |buf| {
         let (mut left, left_count) = try_ready!(ipv6_comp_left(buf, 6));
         let (right, right_count) = try_ready!(ipv6_comp_right(buf,
@@ -75,7 +76,7 @@ fn ipv6_comp(buf: &mut EasyBuf) -> Poll<Ipv6Addr, TokenError> {
 }
 
 // IPv6v4-full    = IPv6-hex 5(":" IPv6-hex) ":" IPv4-address-literal
-fn ipv6v4_full(buf: &mut EasyBuf) -> Poll<Ipv6Addr, TokenError> {
+fn ipv6v4_full(buf: &mut Bytes) -> Poll<Ipv6Addr, TokenError> {
     rule::group(buf, |buf| {
         let a = try_ready!(u16_hexdigs(buf));
         try_ready!(token::skip_octet(buf, b':'));
@@ -105,7 +106,7 @@ fn ipv6v4_full(buf: &mut EasyBuf) -> Poll<Ipv6Addr, TokenError> {
 // IPv6v4-comp    = [IPv6-hex *3(":" IPv6-hex)] "::"
 //                  [IPv6-hex *3(":" IPv6-hex) ":"]
 //                  IPv4-address-literal
-fn ipv6v4_comp(buf: &mut EasyBuf) -> Poll<Ipv6Addr, TokenError> {
+fn ipv6v4_comp(buf: &mut Bytes) -> Poll<Ipv6Addr, TokenError> {
     rule::group(buf, |buf| {
         let (mut left, left_count) = try_ready!(ipv6_comp_left(buf, 4));
         let (right, right_count) = try_ready!(ipv6_comp_right(buf,
@@ -125,7 +126,7 @@ fn ipv6v4_comp(buf: &mut EasyBuf) -> Poll<Ipv6Addr, TokenError> {
 /// Parses the left hand side of a compressed IPv6 address.
 ///
 /// Returns the parsed components and the number of them.
-fn ipv6_comp_left(buf: &mut EasyBuf, max: usize)
+fn ipv6_comp_left(buf: &mut Bytes, max: usize)
                   -> Poll<([u16; 8], usize), TokenError> {
     let mut res = [0u16, 0, 0, 0, 0, 0, 0, 0];
 
@@ -134,8 +135,8 @@ fn ipv6_comp_left(buf: &mut EasyBuf, max: usize)
 
     // We may start with two colons, in which case there is no left hand
     // side.
-    if buf.as_slice()[0] == b':' && buf.as_slice()[1] == b':' {
-        buf.drain_to(2);
+    if buf[0] == b':' && buf[1] == b':' {
+        buf.split_to(2);
         return Ok(Async::Ready((res, 0)));
     }
 
@@ -145,8 +146,8 @@ fn ipv6_comp_left(buf: &mut EasyBuf, max: usize)
         let v = try_ready!(u16_hexdigs(buf));
         try_ready!(token::skip_octet(buf, b':'));
         res[i] = v;
-        if buf.as_slice().first() == Some(&b':') {
-            buf.drain_to(1);
+        if buf.first() == Some(&b':') {
+            buf.split_to(1);
             return Ok(Async::Ready((res, i + 1)))
         }
     }
@@ -157,7 +158,7 @@ fn ipv6_comp_left(buf: &mut EasyBuf, max: usize)
 /// Parses the right hand side of a compressed IPv6 address.
 ///
 /// Returns the parsed components and the number of them.
-fn ipv6_comp_right(buf: &mut EasyBuf, max: usize)
+fn ipv6_comp_right(buf: &mut Bytes, max: usize)
                    -> Poll<([u16; 8], usize), TokenError> {
     let mut res = [0u16, 0, 0, 0, 0, 0, 0, 0];
 
@@ -195,10 +196,10 @@ fn ipv6_comp_right(buf: &mut EasyBuf, max: usize)
 mod test {
     use std::net::{Ipv4Addr, Ipv6Addr};
     use futures::Async;
-    use tokio_core::io::EasyBuf;
+    use bytes::Bytes;
     use super::*;
 
-    fn buf(slice: &[u8]) -> EasyBuf { EasyBuf::from(Vec::from(slice)) }
+    fn buf(slice: &[u8]) -> Bytes { Bytes::from(Vec::from(slice)) }
 
     #[test]
     fn ipv4_good() {

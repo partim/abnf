@@ -49,3 +49,18 @@ macro_rules! try_fail {
     })
 }
 
+/// A macro for extracting an success from a `Poll<Option<T>, E>`.
+///
+/// Early returns if the inner expression returns non-ready, some value, or
+/// an error. Continue if it returns `None`.
+#[macro_export]
+macro_rules! try_opt {
+    ($e:expr) => (match $e {
+        Ok($crate::Async::Ready(None)) => { }
+        Ok($crate::Async::Ready(Some(t)))
+            => return Ok($crate::Async::Ready(t)),
+        Ok($crate::Async::NotReady) => return Ok($crate::Async::NotReady),
+        Err(e) => return Err(e),
+    })
+}
+
