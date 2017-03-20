@@ -2,7 +2,7 @@
 //!
 //! These are defined in RFC 5234, appendix B.1.
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use futures::{Async, Poll};
 use ::parse::token;
 use ::parse::token::{TokenError, Token};
@@ -73,7 +73,7 @@ pub fn crlf(token: &mut Token) -> Poll<(), TokenError> {
     Ok(Async::Ready(()))
 }
 
-pub fn skip_crlf(buf: &mut Bytes) -> Poll<(), TokenError> {
+pub fn skip_crlf(buf: &mut BytesMut) -> Poll<(), TokenError> {
     token::skip(buf, crlf)
 }
 
@@ -94,7 +94,7 @@ pub fn line(token: &mut Token) -> Poll<(), TokenError> {
     }
 }
 
-pub fn parse_line(buf: &mut Bytes) -> Poll<Bytes, TokenError> {
+pub fn parse_line(buf: &mut BytesMut) -> Poll<Bytes, TokenError> {
     token::parse(buf, line)
 }
 
@@ -129,7 +129,7 @@ pub fn digits(token: &mut Token) -> Poll<(), TokenError> {
 
 macro_rules! convert_uint {
     ( $token_name:ident, $uint:ty, $parsef:expr, $radix:expr) => {
-        pub fn $token_name(buf: &mut Bytes) -> Poll<$uint, TokenError> {
+        pub fn $token_name(buf: &mut BytesMut) -> Poll<$uint, TokenError> {
             token::convert(buf, $parsef, |digits| {
                 let digits = digits?;
                 let mut res = 0 as $uint;
@@ -166,7 +166,7 @@ pub fn dquote(token: &mut Token) -> Poll<(), TokenError> {
     token::cat(token, test_dquote)
 }
 
-pub fn skip_dquote(buf: &mut Bytes) -> Poll<(), TokenError> {
+pub fn skip_dquote(buf: &mut BytesMut) -> Poll<(), TokenError> {
     token::skip(buf, dquote)
 }
 
@@ -225,7 +225,7 @@ pub fn lwsp(token: &mut Token) -> Poll<(), TokenError> {
         }
 }
 
-pub fn skip_lwsp(buf: &mut Bytes) -> Poll<(), TokenError> {
+pub fn skip_lwsp(buf: &mut BytesMut) -> Poll<(), TokenError> {
     token::skip(buf, lwsp)
 }
 
@@ -278,11 +278,11 @@ pub fn opt_wsps(token: &mut Token) -> Poll<bool, TokenError> {
     token::opt_cats(token, test_wsp)
 }
 
-pub fn skip_wsps(buf: &mut Bytes) -> Poll<(), TokenError> {
+pub fn skip_wsps(buf: &mut BytesMut) -> Poll<(), TokenError> {
     token::skip(buf, wsps)
 }
 
-pub fn skip_opt_wsps(buf: &mut Bytes) -> Poll<bool, TokenError> {
+pub fn skip_opt_wsps(buf: &mut BytesMut) -> Poll<bool, TokenError> {
     token::skip_opt(buf, wsps)
 }
 
@@ -292,17 +292,17 @@ pub fn skip_opt_wsps(buf: &mut Bytes) -> Poll<bool, TokenError> {
 #[cfg(test)]
 mod test {
     use futures::Async;
-    use bytes::Bytes;
+    use bytes::BytesMut;
     use super::*;
 
-    fn buf(slice: &[u8]) -> Bytes { Bytes::from(Vec::from(slice)) }
+    fn buf(slice: &[u8]) -> BytesMut { BytesMut::from(Vec::from(slice)) }
 
     #[test]
     fn test_u8_digits() {
         for i in 0u8..255 {
             println!("--- {}", i);
-            assert_eq!(u8_digits(&mut Bytes::from(format!("{} ", i)
-                                                    .into_bytes())),
+            assert_eq!(u8_digits(&mut BytesMut::from(format!("{} ", i)
+                                                      .into_bytes())),
                        Ok(Async::Ready(i)));
         }
         assert!(u8_digits(&mut buf(b"256 ")).is_err());
@@ -314,10 +314,10 @@ mod test {
     #[test]
     fn test_u16_hexdigs() {
         for i in 0u16..0xFFFF {
-            assert_eq!(u16_hexdigs(&mut Bytes::from(format!("{:x} ", i)
+            assert_eq!(u16_hexdigs(&mut BytesMut::from(format!("{:x} ", i)
                                                         .into_bytes())),
                        Ok(Async::Ready(i)));
-            assert_eq!(u16_hexdigs(&mut Bytes::from(format!("{:X} ", i)
+            assert_eq!(u16_hexdigs(&mut BytesMut::from(format!("{:X} ", i)
                                                         .into_bytes())),
                        Ok(Async::Ready(i)));
         }

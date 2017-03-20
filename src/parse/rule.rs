@@ -34,13 +34,13 @@
 //!
 //! ```
 //! # #[macro_use] extern crate abnf;
-//! # use abnf::{Async, Bytes, Poll};
+//! # use abnf::{Async, BytesMut, Poll};
 //! # use abnf::parse::rule::group;
 //! # struct Res;
 //! # struct E;
-//! # fn rule1(buf: &mut Bytes) -> Poll<Res, E> { Ok(Async::Ready(Res)) }
-//! # fn rule2(buf: &mut Bytes) -> Poll<Res, E> { Ok(Async::Ready(Res)) }
-//! fn concat(buf: &mut Bytes) -> Poll<Res, E> {
+//! # fn rule1(buf: &mut BytesMut) -> Poll<Res, E> { Ok(Async::Ready(Res)) }
+//! # fn rule2(buf: &mut BytesMut) -> Poll<Res, E> { Ok(Async::Ready(Res)) }
+//! fn concat(buf: &mut BytesMut) -> Poll<Res, E> {
 //!     group(buf, |buf| {
 //!         try_ready!(rule1(buf));
 //!         try_ready!(rule2(buf));
@@ -60,19 +60,19 @@
 //! 
 //! ```
 //! # #[macro_use] extern crate abnf;
-//! # use abnf::{Async, Bytes, Poll};
+//! # use abnf::{Async, BytesMut, Poll};
 //! # use abnf::parse::rule::group;
 //! # struct Res;
 //! # struct E;
-//! fn rule1(buf: &mut Bytes) -> Poll<Option<Res>, E> {
+//! fn rule1(buf: &mut BytesMut) -> Poll<Option<Res>, E> {
 //!     unimplemented!()
 //! }
 //!
-//! fn rule2(buf: &mut Bytes) -> Poll<Option<Res>, E> {
+//! fn rule2(buf: &mut BytesMut) -> Poll<Option<Res>, E> {
 //!     unimplemented!()
 //! }
 //!
-//! fn alt(buf: &mut Bytes) -> Poll<Res, E> {
+//! fn alt(buf: &mut BytesMut) -> Poll<Res, E> {
 //!     try_opt!(rule1(buf));
 //!     try_opt!(rule2(buf));
 //!     Err(E)
@@ -95,12 +95,12 @@
 //!
 //! ```
 //! # #[macro_use] extern crate abnf;
-//! # use abnf::{Async, Bytes, Poll};
+//! # use abnf::{Async, BytesMut, Poll};
 //! # use abnf::parse::rule::{group, repeat};
 //! # struct Res;
 //! # struct E;
-//! # fn rule(buf: &mut Bytes) -> Poll<Res, E> { Ok(Async::Ready(Res)) }
-//! fn repeat_rule(buf: &mut Bytes) -> Poll<Vec<Res>, E> {
+//! # fn rule(buf: &mut BytesMut) -> Poll<Res, E> { Ok(Async::Ready(Res)) }
+//! fn repeat_rule(buf: &mut BytesMut) -> Poll<Vec<Res>, E> {
 //!     let mut res = Vec::new();
 //!     try_ready!(repeat(buf, rule, |item| {
 //!         match item {
@@ -126,12 +126,12 @@
 //!
 //! ```
 //! # #[macro_use] extern crate abnf;
-//! # use abnf::{Async, Bytes, Poll};
+//! # use abnf::{Async, BytesMut, Poll};
 //! # use abnf::parse::rule::{group, repeat};
 //! # struct Res;
 //! # struct E;
-//! # fn rule(buf: &mut Bytes) -> Poll<Res, E> { Ok(Async::Ready(Res)) }
-//! fn six_rule(buf: &mut Bytes) -> Poll<Vec<Res>, E> {
+//! # fn rule(buf: &mut BytesMut) -> Poll<Res, E> { Ok(Async::Ready(Res)) }
+//! fn six_rule(buf: &mut BytesMut) -> Poll<Vec<Res>, E> {
 //!     let mut res = Vec::new();
 //!     let mut count = 0;
 //!     try_ready!(repeat(buf, rule, |item| {
@@ -164,12 +164,12 @@
 //!
 //! ```
 //! # #[macro_use] extern crate abnf;
-//! # use abnf::{Async, Bytes, Poll};
+//! # use abnf::{Async, BytesMut, Poll};
 //! # use abnf::parse::rule::{group, at_least_once};
 //! # struct Res;
 //! # struct E;
-//! # fn rule(buf: &mut Bytes) -> Poll<Res, E> { Ok(Async::Ready(Res)) }
-//! fn rule_at_least_once(buf: &mut Bytes) -> Poll<Vec<Res>, E> {
+//! # fn rule(buf: &mut BytesMut) -> Poll<Res, E> { Ok(Async::Ready(Res)) }
+//! fn rule_at_least_once(buf: &mut BytesMut) -> Poll<Vec<Res>, E> {
 //!     let mut res = Vec::new();
 //!     try_ready!(at_least_once(buf, rule,
 //!         |item| {
@@ -199,13 +199,13 @@
 //!
 //! ```
 //! # #[macro_use] extern crate abnf;
-//! # use abnf::{Async, Bytes, Poll};
+//! # use abnf::{Async, BytesMut, Poll};
 //! # use abnf::parse::rule::{group, optional};
 //! # struct Res1; struct Res2;
 //! # struct E;
-//! # fn rule1(buf: &mut Bytes) -> Poll<Res1, E> { Ok(Async::Ready(Res1)) }
-//! # fn rule2(buf: &mut Bytes) -> Poll<Res2, E> { Ok(Async::Ready(Res2)) }
-//! fn rule1_opt_rule2(buf: &mut Bytes) -> Poll<(Res1, Option<Res2>), E> {
+//! # fn rule1(buf: &mut BytesMut) -> Poll<Res1, E> { Ok(Async::Ready(Res1)) }
+//! # fn rule2(buf: &mut BytesMut) -> Poll<Res2, E> { Ok(Async::Ready(Res2)) }
+//! fn rule1_opt_rule2(buf: &mut BytesMut) -> Poll<(Res1, Option<Res2>), E> {
 //!     group(buf, |buf| {
 //!         let res1 = try_ready!(rule1(buf));
 //!         let res2 = try_ready!(optional(buf, rule2));
@@ -215,15 +215,15 @@
 //! # fn main() { }
 //! ```
 
-use bytes::Bytes;
+use bytes::BytesMut;
 use futures::{Async, Poll};
 
 
 //------------ Combining Rules -----------------------------------------------
 
 /// Succeeds if parsing within `op` succeeds or rewinds.
-pub fn group<P, T, E>(buf: &mut Bytes, parse: P) -> Poll<T, E>
-           where P: FnOnce(&mut Bytes) -> Poll<T, E> {
+pub fn group<P, T, E>(buf: &mut BytesMut, parse: P) -> Poll<T, E>
+           where P: FnOnce(&mut BytesMut) -> Poll<T, E> {
     let orig_buf = buf.clone();
     let res = parse(buf);
     match res {
@@ -233,8 +233,8 @@ pub fn group<P, T, E>(buf: &mut Bytes, parse: P) -> Poll<T, E>
     res
 }
 
-pub fn opt_group<P, T, E>(buf: &mut Bytes, parse: P) -> Poll<Option<T>, E>
-                 where P: FnOnce(&mut Bytes) -> Poll<Option<T>, E> {
+pub fn opt_group<P, T, E>(buf: &mut BytesMut, parse: P) -> Poll<Option<T>, E>
+                 where P: FnOnce(&mut BytesMut) -> Poll<Option<T>, E> {
     let orig_buf = buf.clone();
     let res = parse(buf);
     match res {
@@ -258,9 +258,9 @@ pub fn opt_group<P, T, E>(buf: &mut Bytes, parse: P) -> Poll<Option<T>, E>
 /// next. If it returns an error, the whole repetition rewinds and results
 /// in that error. It it returns a value, the repetition is over producing
 /// this result. If it returns non-ready, another iterations is done.
-pub fn repeat<P, R, E, C, S, F>(buf: &mut Bytes, parse: P, mut combine: C)
+pub fn repeat<P, R, E, C, S, F>(buf: &mut BytesMut, parse: P, mut combine: C)
                           -> Poll<S, F>
-              where P: Fn(&mut Bytes) -> Poll<R, E>,
+              where P: Fn(&mut BytesMut) -> Poll<R, E>,
                     C: FnMut(Result<R, E>) -> Poll<S, F> {
     group(buf, |buf| {
         loop {
@@ -279,10 +279,10 @@ pub fn repeat<P, R, E, C, S, F>(buf: &mut Bytes, parse: P, mut combine: C)
 ///
 /// This is like `repeat()`, but if `parse` fails already on the first time,
 /// `combine` isn’t called at all but rather `empty`.
-pub fn at_least_once<P, R, E, C, S, F, D>(buf: &mut Bytes,
+pub fn at_least_once<P, R, E, C, S, F, D>(buf: &mut BytesMut,
                                           parse: P, mut combine: C, error: D)
                                           -> Poll<S, F>
-                     where P: Fn(&mut Bytes) -> Poll<R, E>,
+                     where P: Fn(&mut BytesMut) -> Poll<R, E>,
                            C: FnMut(Result<R, E>) -> Poll<S, F>,
                            D: FnOnce(E) -> F {
     group(buf, |buf| {
@@ -307,8 +307,8 @@ pub fn at_least_once<P, R, E, C, S, F, D>(buf: &mut Bytes,
 
 
 /// An optional rule.
-pub fn optional<P, R, E, F>(buf: &mut Bytes, parse: P) -> Poll<Option<R>, F>
-                where P: FnOnce(&mut Bytes) -> Poll<R, E> {
+pub fn optional<P, R, E, F>(buf: &mut BytesMut, parse: P) -> Poll<Option<R>, F>
+                where P: FnOnce(&mut BytesMut) -> Poll<R, E> {
     match parse(buf) {
         Ok(Async::NotReady) => Ok(Async::NotReady),
         Ok(Async::Ready(some)) => Ok(Async::Ready(Some(some))),

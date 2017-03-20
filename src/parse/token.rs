@@ -12,7 +12,7 @@
 //! token either as a buffer or some other appropriate type and `skip_` for
 //! functions that silently skip over the token.
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use futures::{Async, Poll};
 
 
@@ -22,18 +22,18 @@ use futures::{Async, Poll};
 
 /// A token in the process of being parsed.
 ///
-/// A token is parsed from the beginning of an `Bytes` by advancing over
+/// A token is parsed from the beginning of a `BytesMut` by advancing over
 /// octets until the token’s end is discoverd at which point the token can
-/// be drained from the buffer and converted into an `Bytes` of its own.
+/// be drained from the buffer and converted into a `Bytes` of its own.
 pub struct Token<'a> {
-    bytes: &'a mut Bytes,
+    bytes: &'a mut BytesMut,
     end: usize
 }
 
 
 impl<'a> Token<'a> {
     /// Creates a new token atop the given buffer.
-    pub fn new(bytes: &'a mut Bytes) -> Self {
+    pub fn new(bytes: &'a mut BytesMut) -> Self {
         Token {
             bytes: bytes,
             end: 0
@@ -98,7 +98,7 @@ impl<'a> Token<'a> {
 
     /// Drains the token from the underlying buffer.
     pub fn split(self) -> Bytes {
-        self.bytes.split_to(self.end)
+        self.bytes.split_to(self.end).freeze()
     }
 
     /// Drops the token from the underlying buffer.
@@ -115,7 +115,7 @@ impl<'a> Token<'a> {
 /// The closure `parseop` is given a token atop `bytes`. If the closure returns
 /// ready, the token is drained from the buffer and returned. Otherwise, the
 /// result of the closure is returned and nothing else happens.
-pub fn parse<P, E>(bytes: &mut Bytes, parseop: P) -> Poll<Bytes, E>
+pub fn parse<P, E>(bytes: &mut BytesMut, parseop: P) -> Poll<Bytes, E>
              where P: FnOnce(&mut Token) -> Poll<(), E> {
     let mut token = Token::new(bytes);
     try_ready!(parseop(&mut token));
@@ -128,7 +128,7 @@ pub fn parse<P, E>(bytes: &mut Bytes, parseop: P) -> Poll<Bytes, E>
 /// This starts out as `parse()`. If that returns either ready or with an
 /// error, the result is given to the closure `convertop` which converts it
 /// into whatever it likes.
-pub fn convert<P, E, C, R, F>(bytes: &mut Bytes, parseop: P, convertop: C)
+pub fn convert<P, E, C, R, F>(bytes: &mut BytesMut, parseop: P, convertop: C)
                               -> Poll<R, F>
                where P: FnOnce(&mut Token) -> Poll<(), E>,
                      C: FnOnce(Result<&[u8], E>) -> Result<R, F> {
@@ -141,7 +141,7 @@ pub fn convert<P, E, C, R, F>(bytes: &mut Bytes, parseop: P, convertop: C)
 }
 
 /// Skips over a token.
-pub fn skip<P, E>(bytes: &mut Bytes, parsef: P) -> Poll<(), E>
+pub fn skip<P, E>(bytes: &mut BytesMut, parsef: P) -> Poll<(), E>
             where P: FnOnce(&mut Token) -> Poll<(), E> {
     // XXX Convert to ultimately using Token::skip()
     try_ready!(parse(bytes, parsef));
@@ -151,7 +151,7 @@ pub fn skip<P, E>(bytes: &mut Bytes, parsef: P) -> Poll<(), E>
 /// Skips over an optional token.
 ///
 /// If successful, returns whether there was a token or not.
-pub fn skip_opt<P, E>(bytes: &mut Bytes, parsef: P) -> Poll<bool, E>
+pub fn skip_opt<P, E>(bytes: &mut BytesMut, parsef: P) -> Poll<bool, E>
                 where P: FnOnce(&mut Token) -> Poll<(), E> {
     match try_result!(skip(bytes, parsef)) {
         Ok(()) => Ok(Async::Ready(true)),
@@ -195,14 +195,15 @@ pub fn opt_octet<E>(token: &mut Token, value: u8) -> Poll<bool, E> {
 /// Skips over the first octet in `bytes` which must be `value`.
 ///
 /// Returns an error if the first octet is anything else.
-pub fn skip_octet(bytes: &mut Bytes, value: u8) -> Poll<(), TokenError> {
+pub fn skip_octet(bytes: &mut BytesMut, value: u8) -> Poll<(), TokenError> {
     skip(bytes, |token| octet(token, value))
 }
 
 /// Skips over the first octet in `bytes` if it is `value`.
 ///
 /// On success, returns whether it skipped an octet or not.
-pub fn skip_opt_octet(bytes: &mut Bytes, value: u8) -> Poll<bool, TokenError> {
+pub fn skip_opt_octet(bytes: &mut BytesMut, value: u8)
+                      -> Poll<bool, TokenError> {
     match try_result!(skip_octet(bytes, value)) {
         Ok(()) => Ok(Async::Ready(true)),
         Err(_) => Ok(Async::Ready(false))
@@ -291,13 +292,13 @@ pub fn literal(token: &mut Token, lit: &[u8]) -> Poll<(), TokenError> {
 }
 
 /// Parse a literal from a buffer.
-pub fn parse_literal(bytes: &mut Bytes, lit: &[u8])
+pub fn parse_literal(bytes: &mut BytesMut, lit: &[u8])
                      -> Poll<Bytes, TokenError> {
     parse(bytes, |token| literal(token, lit))
 }
 
 /// Skip over a literal in a buffer.
-pub fn skip_literal(bytes: &mut Bytes, lit: &[u8]) -> Poll<(), TokenError> {
+pub fn skip_literal(bytes: &mut BytesMut, lit: &[u8]) -> Poll<(), TokenError> {
     skip(bytes, |token| literal(token, lit))
 }
 
@@ -310,7 +311,7 @@ pub fn skip_literal(bytes: &mut Bytes, lit: &[u8]) -> Poll<(), TokenError> {
 ///
 /// ```
 /// # #[macro_use] extern crate abnf;
-/// # use abnf::{Async, Bytes, Poll};
+/// # use abnf::{Async, BytesMut, Poll};
 /// # use abnf::parse::token::translate_literal;
 /// enum Command {
 ///     Echo,
@@ -319,14 +320,14 @@ pub fn skip_literal(bytes: &mut Bytes, lit: &[u8]) -> Poll<(), TokenError> {
 ///
 /// struct CommandError;
 ///
-/// fn parse_command(bytes: &mut Bytes) -> Poll<Command, CommandError> {
+/// fn parse_command(bytes: &mut BytesMut) -> Poll<Command, CommandError> {
 ///     try_opt!(translate_literal(bytes, b"echo", Command::Echo));
 ///     try_opt!(translate_literal(bytes, b"quit", Command::Quit));
 ///     Err(CommandError)
 /// }
 /// # fn main() { }
 /// ```
-pub fn translate_literal<T, E>(bytes: &mut Bytes, lit: &[u8], res: T)
+pub fn translate_literal<T, E>(bytes: &mut BytesMut, lit: &[u8], res: T)
                             -> Poll<Option<T>, E> {
     match skip_literal(bytes, lit) {
         Ok(Async::NotReady) => Ok(Async::NotReady),
