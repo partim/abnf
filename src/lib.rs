@@ -3,8 +3,8 @@ extern crate futures;
 
 #[macro_use] pub mod macros;
 
-pub use bytes::Bytes;
-pub use futures::{Async, Poll};
+/// Re-exported for use by the macros.
+pub use futures::Async;
 
 pub mod core;
 pub mod ipaddr;

@@ -2,7 +2,7 @@
 #[macro_export]
 macro_rules! assert_eq_ready {
     ($left:expr, $right:expr) => {
-        assert_eq!($left, Ok(Async::Ready($right)))
+        assert_eq!($left, Ok($crate::Async::Ready($right)))
     }
 }
 

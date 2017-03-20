@@ -311,7 +311,10 @@ pub fn skip_literal(bytes: &mut BytesMut, lit: &[u8]) -> Poll<(), TokenError> {
 ///
 /// ```
 /// # #[macro_use] extern crate abnf;
-/// # use abnf::{Async, BytesMut, Poll};
+/// # extern crate bytes;
+/// # extern crate futures;
+/// # use bytes::BytesMut;
+/// # use futures::{Async, Poll};
 /// # use abnf::parse::token::translate_literal;
 /// enum Command {
 ///     Echo,

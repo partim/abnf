@@ -34,7 +34,10 @@
 //!
 //! ```
 //! # #[macro_use] extern crate abnf;
-//! # use abnf::{Async, BytesMut, Poll};
+//! # extern crate bytes;
+//! # extern crate futures;
+//! # use bytes::BytesMut;
+//! # use futures::{Async, Poll};
 //! # use abnf::parse::rule::group;
 //! # struct Res;
 //! # struct E;
@@ -60,7 +63,10 @@
 //! 
 //! ```
 //! # #[macro_use] extern crate abnf;
-//! # use abnf::{Async, BytesMut, Poll};
+//! # extern crate bytes;
+//! # extern crate futures;
+//! # use bytes::BytesMut;
+//! # use futures::{Async, Poll};
 //! # use abnf::parse::rule::group;
 //! # struct Res;
 //! # struct E;
@@ -95,7 +101,10 @@
 //!
 //! ```
 //! # #[macro_use] extern crate abnf;
-//! # use abnf::{Async, BytesMut, Poll};
+//! # extern crate bytes;
+//! # extern crate futures;
+//! # use bytes::BytesMut;
+//! # use futures::{Async, Poll};
 //! # use abnf::parse::rule::{group, repeat};
 //! # struct Res;
 //! # struct E;
@@ -126,7 +135,10 @@
 //!
 //! ```
 //! # #[macro_use] extern crate abnf;
-//! # use abnf::{Async, BytesMut, Poll};
+//! # extern crate bytes;
+//! # extern crate futures;
+//! # use bytes::BytesMut;
+//! # use futures::{Async, Poll};
 //! # use abnf::parse::rule::{group, repeat};
 //! # struct Res;
 //! # struct E;
@@ -164,7 +176,10 @@
 //!
 //! ```
 //! # #[macro_use] extern crate abnf;
-//! # use abnf::{Async, BytesMut, Poll};
+//! # extern crate bytes;
+//! # extern crate futures;
+//! # use bytes::BytesMut;
+//! # use futures::{Async, Poll};
 //! # use abnf::parse::rule::{group, at_least_once};
 //! # struct Res;
 //! # struct E;
@@ -199,7 +214,10 @@
 //!
 //! ```
 //! # #[macro_use] extern crate abnf;
-//! # use abnf::{Async, BytesMut, Poll};
+//! # extern crate bytes;
+//! # extern crate futures;
+//! # use bytes::BytesMut;
+//! # use futures::{Async, Poll};
 //! # use abnf::parse::rule::{group, optional};
 //! # struct Res1; struct Res2;
 //! # struct E;
